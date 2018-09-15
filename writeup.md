@@ -41,7 +41,7 @@ As the first step, camera distortion is done to undistort all input images. This
 3. A objpoints matrix which is a uniform 9x6 grid is created.
 4. The calibrateCamera function calculates the camera matrix and distortion coefficients to get the mapping from imgpoints to objpoints.
 
-The code is in `getCameraCalib()`  at line 78.
+The code is in `getCameraCalib()`  at line 145.
 
 Here is an example of captured chessboard image and it's undistorted version calculated using the camera matrix and distortion coefficients.
 
@@ -73,7 +73,7 @@ The final approach I selected was:
 2. Threshold the V channel in range [0.7*255 1.0*255]. Values from this  [paper](https://pdfs.semanticscholar.org/88d7/c3fe5bbfe8f275541d344eb0b1c02ccc2779.pdf) were used as starting points.
 3. The final binary image is the "AND" or all common high pixels after thresholding from 1 and 2 sub-steps above.
 
-The code is in `getBinary()` at line 111.
+The code is in `getBinary()` at line 174.
 
 Here is an example of binary thresholded image:
 
@@ -87,7 +87,7 @@ For this I decided following set of points in the image:
 1. src: Corners of a quadrilateral drawn around the lane region in the front-view camera image.
 2. dst: These are the points where I would like the above corners to be mapped so that the image is a top-view image.
 
-This is done in TunableParams class constructor at line 44.
+This is done in TunableParams class constructor at line 16.
 
 
 ```
@@ -129,7 +129,7 @@ To get lane pixels from the image from step 3:
 2. Window search method to gather all lane pixels is used. Window size is 50 and number of windows are 9 per image. The minimum number of pixels to be found to call an update on centre of next window is 10.
 3. A polynomial of degree 2 is fit through each of the right and left sets of lane pixels detected.
 
-Follow the code from line 357 in `fit_polynomial()`
+Follow the code from line 297 in `fit_polynomial()`
 
 Here is an example of image lane line fit using the histogram and window search method.
 
@@ -137,13 +137,13 @@ Here is an example of image lane line fit using the histogram and window search 
 
 #### 5. Unwarp
 
-1. The warped image and lane region is unwarped back using Minv calculated in step 3 to get back the front-view.
+1. The warped image and lane region is unwarped back using Minv calculated in step 3 to get back the front-view. This is done using the OpenCV warpPerspective() function mainly. The code is at line 500.
 
-#### 5. Measurements
+#### 6. Measurements
 
 These include:
 1. Lane curvature for left and right lanes are calculated using the polynomial coefficients calculated in 4. The formula is discussed [here](https://www.intmath.com/applications-differentiation/8-radius-curvature.php)
-2. Measurement results for each image is labeled on each unwarped frame. The code is in `measureResult()` at line 420.
+2. Measurement results for each image is labeled on each unwarped frame. The code is in `measureResult()` at line 510.
 
 Here is the final annotated image:
 
@@ -162,7 +162,8 @@ The pipeline for images is used as is for video expect at the "Line fit" where i
 5. For video, the coefficients are smoothened over last 10 frames to avoid the lines from jumping around.
 6. If there are no lines detected for 25 frames, I hold on to last lines and start from scratch if it is more than 25
 
-The optimized line fit function is in `fit_polynomial_prior()` at line 433.
+The optimized line fit function is in `fit_polynomial_prior()` at line 369.
+The logic to decide whether to start lane detection with prior or scratch is in videoPipeline() at line 560.
 
 Here's a [link to my video result](./project_out_video.mp4)
 
@@ -171,8 +172,9 @@ Here's a [link to my video result](./project_out_video.mp4)
 ### Discussion
 
 1. Top view helps in predicting the lane line polynomial more clearly.
-2. Getting a good binary thresholded image for every frame is difficult due to road texture, criss-cross patterns on the bridge, and shadows. This gets unwanted pixels in the window.
+2. Getting a good binary thresholded image for every frame is difficult due to road texture, horizontal patterns on the bridge, and shadows. This gets unwanted pixels in the window.
 3. I used 25 fps of camera to calculate most metrics like smoothing and number of undetected frames to let go. Speed of vehicle can also be an important factor here to consider.
 4. Extreme curvature of road, road elevations etc. throw off the lane predictions as the points used in perspective warping are hard coded.
-5. I tried using polynomial of degree 3 for the harder challenge thinking that it will detect the double bends but the sudden change from single curve to double bend is still not handled. The code is written to handle degree 2 and 3 polynomial.
+5. The same pipeline works for challenge_video except when under the bridge where ligthing is very less to detect the whole yellow line on left.
+6. I tried using polynomial of degree 3 for the harder challenge thinking that it will detect the double bends but the sudden change from single curve to double bend is still not handled. The code is written to handle degree 2 and 3 polynomial.
 

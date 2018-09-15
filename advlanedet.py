@@ -11,7 +11,6 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import glob
 from moviepy.editor import VideoFileClip
-from tempfile import TemporaryFile
 
 
 class TunableParams():
@@ -83,6 +82,9 @@ class TunableParams():
         #degree of polynomial to fit
         self.degree = 2
         
+        #no. of allowed frames to be not detected
+        self.nwrong = 25
+        
 
 
 class Line():
@@ -128,9 +130,6 @@ class Line():
         sumarr, count = np.zeros(self.numcoeffs),0
         for ii in range(0, len(self.recent_coeffs)-1, self.numcoeffs):
             sumarr += self.recent_coeffs[ii:ii+self.numcoeffs]
-            #a += self.recent_coeffs[ii]
-            #b += self.recent_coeffs[ii+1]
-            #c += self.recent_coeffs[ii+2]
             count += 1
         self.best_fit = np.divide(sumarr, count)
         return self.best_fit
@@ -166,11 +165,6 @@ def getCameraCalib(images, cr = 9, cc = 6):
             imgpoints.append(corners)
             objpoints.append(objp)
             
-            #img = cv2.drawChessboardCorners(img, (cr,cc), corners, ret)
-            #plt.imshow(img)
-#        else:
-            #print('no points found in ' + fname)
-
 
     ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
     
@@ -183,37 +177,13 @@ def getBinary(img,  tparams):
     '''
    
     img = np.copy(img)
-    # Convert to HLS color space and separate the V channel
-    #hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
-    #h_channel = hls[:,:,0]
-    #l_channel = hls[:,:,1]
-    #s_channel = hls[:,:,2]
-    
-    #lab = cv2.cvtColor(img, cv2.COLOR_RGB2Lab)
-    #llab_channel = lab[:,:,0]
-    #alab_channel = lab[:,:,1]
-    #blab_channel = lab[:,:,2]
     
     #HSV
     hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-    #hhsv_channel = hsv[:,:,0]
-    #hhsv_bin = np.zeros_like(hhsv_channel)
-    #hhsv_bin[(hhsv_channel >= tparams.hhsv_thresh[0]) & (hhsv_channel <= tparams.hhsv_thresh[1])] = 1
-    #shsv_channel = hsv[:,:,1]
-    #shsv_bin = np.zeros_like(shsv_channel)
-    #shsv_bin[(shsv_channel >= tparams.shsv_thresh1[0]) & (shsv_channel <= tparams.shsv_thresh1[1])] = 1
-    #shsv_bin[(shsv_channel >= tparams.shsv_thresh1[0]) & (shsv_channel <= tparams.shsv_thresh1[1])] = 1
     vhsv_channel = hsv[:,:,2]
     vhsv_bin = np.zeros_like(vhsv_channel)
     vhsv_bin[(vhsv_channel >= tparams.vhsv_thresh[0]) & (vhsv_channel <= tparams.vhsv_thresh[1])] = 1
     
-    
-    ## Define a kernel size and apply Gaussian smoothing
-    #gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    #blur_gray_channel = cv2.GaussianBlur(gray, (tparams.gkernel_size, tparams.gkernel_size), 0)
-    
-    ## Define a kernel size and apply Gaussian smoothing
-    #blur_l_channel = cv2.GaussianBlur(l_channel, (tparams.gkernel_size, tparams.gkernel_size), 0)
     
     # Sobel x
     sobelx = cv2.Sobel(vhsv_channel, cv2.CV_64F, 1, 0) # Take the derivative in x
@@ -238,31 +208,8 @@ def getBinary(img,  tparams):
     
     # Combine the two binary thresholds
     combined_binary = np.zeros_like(sxbinary)
-    #combined_binary[(gradmag_binary == 1) | ((sxbinary == 1) & (dirmag_binary == 1)) | (vhsv_bin == 1)] = 1
     combined_binary[(vhsv_bin == 1) & ((gradmag_binary == 1) & (dirmag_binary == 1))] = 1
-#    
-#    mask = np.zeros_like(vhsv_bin)  
-#    img_size = vhsv_bin.shape[0:2][::-1]
-#    vertices = np.float32(
-#            [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-#            [((img_size[0] / 6) - 100), img_size[1]-50],
-#            [(img_size[0] * 5 / 6) + 100, img_size[1]-50],
-#            [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-#    
-#    #defining a 3 channel or 1 channel color to fill the mask with depending on the input image
-#    if len(vhsv_bin.shape) > 2:
-#        channel_count = vhsv_bin.shape[2]  # i.e. 3 or 4 depending on your image
-#        ignore_mask_color = (255,) * channel_count
-#    else:
-#        ignore_mask_color = 255
-        
-    ##filling pixels inside the polygon defined by "vertices" with the fill color    
-    #cv2.fillPoly(mask, np.array([vertices], dtype=np.int32), ignore_mask_color)
-    
-    ##returning the image only where mask pixels are nonzero
-    #masked_image = cv2.bitwise_and(combined_binary, mask)
-    
-    
+
     return combined_binary
 
 
@@ -359,7 +306,6 @@ def fit_polynomial(binary_warped, tparams, save = False, name='temp.jpg'):
         # Fit a second order polynomial to each using `np.polyfit`
         left_fit = np.polyfit(lefty, leftx, tparams.degree)
         right_fit = np.polyfit(righty, rightx, tparams.degree)
-        #print(left_fit, right_fit)
     
         # Generate x and y values for plotting
         ploty = np.linspace(25, binary_warped.shape[0]-1, binary_warped.shape[0] )
@@ -372,7 +318,6 @@ def fit_polynomial(binary_warped, tparams, save = False, name='temp.jpg'):
             
     except TypeError:
         # Avoids an error if `left` and `right_fit` are still none or incorrect
-        #print('The function failed to fit a line!')
         out_img, left_fitx, right_fitx, ploty, left_fit, right_fit = [], None, None, None, None, None
         return out_img, left_fitx, right_fitx, ploty, left_fit, right_fit
     ## Visualization ##
@@ -385,7 +330,7 @@ def fit_polynomial(binary_warped, tparams, save = False, name='temp.jpg'):
         ax.imshow(out_img)
         ax.plot(left_fitx, ploty, color='yellow')
         ax.plot(right_fitx, ploty, color='yellow')
-        plt.savefig(name)
+        fig.savefig(name)
 
     return out_img, left_fitx, right_fitx, ploty, left_fit, right_fit
 
@@ -417,6 +362,7 @@ def fit_polynomial_prior_util(img_shape, leftx, lefty, rightx, righty, lline, rl
             
     lline.addCurrFit(left_fitx, ploty)
     rline.addCurrFit(right_fitx, ploty)
+    
     return left_fitx, right_fitx, ploty, left_fit, right_fit
 
 
@@ -425,10 +371,6 @@ def fit_polynomial_prior(binary_warped, tparams, lline, rline):
     this function will searh for lane pixels given line coeffs from previous frame.
     if nothing is found then we return empty matrices
     '''
-    global framecount
-    
-    framecount += 1
-    #print(framecount)
     left_fit_old = lline.getSmoothenedCoeffs();
     right_fit_old = rline.getSmoothenedCoeffs();
     margin = tparams.margin
@@ -513,9 +455,10 @@ def unwarpProject(warped, undist, Minv, left_fitx, right_fitx, ploty):
     
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     newwarp = cv2.warpPerspective(color_warp, Minv, (warped.shape[1], warped.shape[0])) 
+    
     # Combine the result with the original image
     result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
-    #plt.imshow(result)
+    
     return result
 
 
@@ -552,11 +495,6 @@ def measureCamCarOffsetReal(left_fit_cr, right_fit_cr, ymax_r, xmax_cr, degree):
     '''
     measure the car offset in meters
     '''
-    
-    #left_x = (left_fit_cr[0]*(ymax_r**2)) + (left_fit_cr[1]*ymax_r) + (left_fit_cr[2])
-    #right_x = (right_fit_cr[0]*(ymax_r**2)) + (right_fit_cr[1]*ymax_r) + (right_fit_cr[2])
-    
-    
     left_x = 0
     right_x = 0
     for i in range(degree + 1):
@@ -581,9 +519,9 @@ def measureResult(img, left_fitx, right_fitx, ploty, ym_per_pix, xm_per_pix, deg
     offset = measureCamCarOffsetReal(left_fit_cr, right_fit_cr, y_eval, img.shape[1]*xm_per_pix, degree)
     avg_curve = (lcurve + rcurve)/2
     str1 = 'Radius of curvature: %.1f m' % avg_curve
-    result = cv2.putText(img, str1, (500,30), 0, 1, (0,0,0), 2, cv2.LINE_AA)
+    result = cv2.putText(img, str1, (600,30), 0, 1, (0,0,0), 2, cv2.LINE_AA)
     str2 = 'Vehicle offset from lane center: %.1f m' % offset
-    result = cv2.putText(result, str2, (500,60), 0, 1, (0,0,0), 2, cv2.LINE_AA)
+    result = cv2.putText(result, str2, (600,60), 0, 1, (0,0,0), 2, cv2.LINE_AA)
     if np.isnan(avg_curve) or np.isnan(offset):
         return False, result
     else:
@@ -605,7 +543,6 @@ def imagePipeline(img, tparams, n):
     plt.imsave('output_images/test_undist_out'+str(n)+'.jpg', undist, format='jpeg')
     plt.imsave('output_images/test_bin_out'+str(n)+'.jpg', binary, format='jpeg')
     plt.imsave('output_images/test_warped_out'+str(n)+'.jpg', binary_warped, format='jpeg')
-    plt.imsave('output_images/test_lanes_out'+str(n)+'.jpg', out_img, format='jpeg')
     plt.imsave('output_images/test_unwarped'+str(n)+'.jpg', result, format='jpeg')
     plt.imsave('output_images/test_measured'+str(n)+'.jpg', measured_result, format='jpeg')
     
@@ -623,49 +560,32 @@ def videoPipeline(img, tparams, lline, rline):
     if lline.detected and rline.detected:
         out_img, left_fitx, right_fitx, ploty, left_fit, right_fit = fit_polynomial_prior(binary_warped, tparams, lline, rline)
         if out_img == []:
-            if failcount1 < 25:
+            if failcount1 < tparams.nwrong:
                 left_fit = lline.getSmoothenedCoeffs()
                 right_fit = rline.getSmoothenedCoeffs()
                 left_fitx = lline.curr_x
                 right_fitx = rline.curr_x
                 ploty = lline.curr_y
                 failcount1 += 1
-                #print(failcount1)
-                #print('Failed smoothing: Reusing last val')
-                if failcount1 == 25:
+                if failcount1 == tparams.nwrong:
                     failcount1 = 0
-                    #print(failcount1)
                     lline.detected = False
                     rline.detected = False
-            else:
-                #print('Failed reusing')
-        else:
-            #print('Using smoothened coeffs')
     else:
-        #print('none')
         out_img, left_fitx, right_fitx, ploty, left_fit, right_fit = fit_polynomial(binary_warped, tparams, save=False)
         if out_img == []:
             out_img = binary_warped
             left_fitx, right_fitx, ploty = 0,0,0
-            #print('Failed starting from scratch')
         else:
             lline.addCurrCoeffs(left_fit)
             lline.addCurrFit(left_fitx, ploty)
             rline.addCurrCoeffs(right_fit)
             rline.addCurrFit(right_fitx, ploty)
-            #print('Starting from scratch')
     if np.all(ploty) != 0:
         result = unwarpProject(binary_warped, undist, tparams.Minv, left_fitx, right_fitx, ploty)
         ret, measured_result = measureResult(result, left_fitx, right_fitx, ploty, tparams.ym_per_pix, tparams.xm_per_pix, tparams.degree)
         
     else:
-#        mpimg.imsave('diagnostics/f_orig'+str(failcount1)+'.jpg', img)
-#        mpimg.imsave('diagnostics/f_binarywarped'+str(failcount1)+'.jpg', binary_warped)
-#        mpimg.imsave('diagnostics/f_line'+str(failcount1)+'.jpg', out_img)
-#        outfile1 = TemporaryFile()
-#        outfile2 = TemporaryFile()
-#        np.save(outfile1, left_fitx)
-#        np.save(outfile2, right_fitx)
         measured_result = img
         
     return measured_result
@@ -680,7 +600,6 @@ def processImages():
     
     timages = glob.glob('test_images/*.jpg')
     for ii,timage in enumerate(timages):
-        #print(ii)
         img = mpimg.imread(timage)
         imagePipeline(img, tparams, ii)
 
@@ -692,7 +611,7 @@ def processVideo(inpVid, outVid):
     
     global tparams
     
-    clip1 = VideoFileClip(inpVid)#.subclip(0,10)
+    clip1 = VideoFileClip(inpVid).subclip(0,10)
     lLine = Line(tparams.smoothing, tparams.degree+1)
     rLine = Line(tparams.smoothing, tparams.degree+1)
     processedVid = clip1.fl_image(lambda img: videoPipeline(img, tparams, lLine, rLine))
@@ -701,9 +620,14 @@ def processVideo(inpVid, outVid):
     processedVid.write_videofile(outVid, audio=False)
     clip1.close()
     
+#declare global varialbe to hold frame failure count in video
 failcount1 = 0
+
+#create the tunable params object
 tparams = TunableParams()
-processImages()
-processVideo('project_video.mp4', 'project_out_video.mp4')
-processVideo('challenge_video.mp4', 'challenge_out_video.mp4')
-processVideo('harder_challenge_video.mp4', 'hchallenge_out_video.mp4')
+
+#run the pipeline
+processImages() #image
+processVideo('project_video.mp4', 'project_out_video.mp4') #video
+#processVideo('challenge_video.mp4', 'challenge_out_video.mp4')
+#processVideo('harder_challenge_video.mp4', 'hchallenge_out_video.mp4')
