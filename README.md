@@ -4,7 +4,7 @@
 
 [//]: # (Image References)
 
-[image1]: ./test_images/straight_lines1.jpg "Input Image"
+[image1]: ./test_images/straight_lines6.jpg "Input Image"
 [image2]: ./output_images/Calib.jpg "Undistorted"
 [image3]: ./output_images/test_undist_out7.jpg "Road Transformed"
 [image4]: ./output_images/test_bin_out7.jpg "Binary Example"
