@@ -143,6 +143,7 @@ Here is an example of image lane line fit using the histogram and window search 
 
 These include:
 1. Lane curvature for left and right lanes are calculated using the polynomial coefficients calculated in 4. The formula is discussed [here](https://www.intmath.com/applications-differentiation/8-radius-curvature.php)
+2. Lane centre is measured by calculating the x intercept on left and right lanes lines and finding it's midpoint. Assuming image middle is camera position I take the difference in real world measurements and declare that as the car offset from center. 
 2. Measurement results for each image is labeled on each unwarped frame. The code is in `measureResult()` at advlanedet.py/line 510.
 
 Here is the final annotated image:
@@ -175,6 +176,6 @@ Here's a [link to my video result](./project_out_video.mp4)
 2. Getting a good binary thresholded image for every frame is difficult due to road texture, horizontal patterns on the bridge, and shadows. This gets unwanted pixels in the window.
 3. I used 25 fps of camera to calculate most metrics like smoothing and number of undetected frames to let go. Speed of vehicle can also be an important factor here to consider.
 4. Extreme curvature of road, road elevations etc. throw off the lane predictions as the points used in perspective warping are hard coded.
-5. The same pipeline works for challenge_video except when under the bridge where ligthing is very less to detect the whole yellow line on left.
+5. The same pipeline almost works for challenge_video. It fails when car is under the bridge where lighting is very less to detect the whole yellow lane line on left.
 6. I tried using polynomial of degree 3 for the harder challenge thinking that it will detect the double bends but the sudden change from single curve to double bend is still not handled. The code is written to handle degree 2 and 3 polynomial.
 
